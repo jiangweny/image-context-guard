@@ -148,7 +148,7 @@ def install(args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--codex-home', default=os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
+    parser.add_argument('--codex-home', default=os.environ.get('CODEX_HOME') or '~/.codex')
     parser.add_argument('--skills-dir', help='Override the skill discovery directory for your Codex client.')
     parser.add_argument('--with-global-rule', action='store_true', help='Merge the managed block into CODEX_HOME/AGENTS.md.')
     parser.add_argument('--backend', choices=['auto', 'native-agent', 'api'],

@@ -1,7 +1,7 @@
 """Offline behavior tests: synthetic files, isolated homes, no real provider calls."""
 import argparse
 import base64
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import importlib.util
 import io
 import json
@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -332,6 +333,58 @@ class ErrorAndDeadlineTests(IsolatedTest):
         self.assertEqual(caught.exception.category, 'total_timeout')
         self.assertLess(time.monotonic() - start, 8)
 
+    def test_deadline_does_not_depend_on_communicate_timeout(self):
+        # Windows can block writing stdin before communicate checks its timeout.
+        # Exercise an uninterruptible communicate on every platform.
+        script = self.root / 'blocked_pipe.py'
+        script.write_text('import time\ntime.sleep(30)\n', encoding='utf-8')
+        real_communicate = subprocess.Popen.communicate
+        real_popen = subprocess.Popen
+        processes = []
+        threads_before = set(threading.enumerate())
+
+        def blocking_communicate(process, input=None, timeout=None):
+            return real_communicate(process, input=input)
+
+        def tracked(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+
+        start = time.monotonic()
+        with mock.patch.object(subprocess.Popen, 'communicate', blocking_communicate):
+            with mock.patch.object(vision.subprocess, 'Popen', side_effect=tracked):
+                with self.assertRaises(vision.VisionError) as caught:
+                    vision._run_worker([sys.executable, '-B', str(script)],
+                                       {'payload': 'x' * 2_000_000}, 0.4)
+        self.assertEqual(caught.exception.category, 'total_timeout')
+        self.assertLess(time.monotonic() - start, 8)
+        self.assertIsNotNone(processes[0].poll())
+        self.assertTrue(all(pipe.closed for pipe in
+                            (processes[0].stdin, processes[0].stdout, processes[0].stderr)))
+        self.assertFalse(set(threading.enumerate()) - threads_before)
+
+    def test_pipe_error_reaps_worker_and_closes_streams(self):
+        script = self.root / 'pipe_error.py'
+        script.write_text('import time\ntime.sleep(30)\n', encoding='utf-8')
+        real_popen = subprocess.Popen
+        processes = []
+        threads_before = set(threading.enumerate())
+
+        def tracked(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            processes.append(process)
+            return process
+
+        with mock.patch.object(subprocess.Popen, 'communicate', side_effect=OSError('pipe failure')):
+            with mock.patch.object(vision.subprocess, 'Popen', side_effect=tracked):
+                with self.assertRaisesRegex(OSError, 'pipe failure'):
+                    vision._run_worker([sys.executable, '-B', str(script)], {}, 10)
+        self.assertIsNotNone(processes[0].poll())
+        self.assertTrue(all(pipe.closed for pipe in
+                            (processes[0].stdin, processes[0].stdout, processes[0].stderr)))
+        self.assertFalse(set(threading.enumerate()) - threads_before)
+
     def test_raw_worker_stderr_is_not_exposed(self):
         script = self.root / 'failed.py'
         script.write_text('import sys\nsys.stderr.write("private-worker-detail")\nsys.exit(2)\n', encoding='utf-8')
@@ -475,9 +528,38 @@ class HistoryTests(IsolatedTest):
 
     def test_index_schema_change_falls_back_to_filename(self):
         import sqlite3
-        with sqlite3.connect(self.home / 'state_5.sqlite'):
+        with closing(sqlite3.connect(self.home / 'state_5.sqlite')):
             pass
         self.assertEqual(pruner.session_path(self.home, self.sid), self.path.resolve())
+
+    def test_index_connections_close_on_success_and_schema_fallback(self):
+        import sqlite3
+        database = self.home / 'state_5.sqlite'
+        connect = sqlite3.connect
+        for valid_schema in (False, True):
+            with self.subTest(valid_schema=valid_schema):
+                with closing(connect(database)) as connection:
+                    if valid_schema:
+                        connection.execute('CREATE TABLE threads (id TEXT, rollout_path TEXT)')
+                        connection.execute('INSERT INTO threads VALUES (?, ?)', (self.sid, str(self.path)))
+                        connection.commit()
+                original = database.read_bytes()
+                connections = []
+
+                def tracked(*args, **kwargs):
+                    connection = connect(*args, **kwargs)
+                    connections.append(connection)
+                    self.addCleanup(connection.close)
+                    return connection
+
+                with mock.patch.object(pruner.sqlite3, 'connect', side_effect=tracked):
+                    self.assertEqual(pruner.session_path(self.home, self.sid), self.path.resolve())
+                self.assertEqual(len(connections), 1)
+                # Retain a reference so garbage collection cannot conceal a leaked connection.
+                with self.assertRaises(sqlite3.ProgrammingError):
+                    connections[0].execute('SELECT 1')
+                self.assertEqual(database.read_bytes(), original)
+                database.unlink()
 
     def test_history_selection_normalizes_home(self):
         alias = self.home / 'sessions' / '..'
@@ -598,6 +680,45 @@ class InstallTests(IsolatedTest):
 
 
 class CliTests(IsolatedTest):
+    def test_helpers_accept_explicit_home_without_user_profile(self):
+        # Path.home fails on Windows when USERPROFILE/HOMEPATH are absent.
+        with mock.patch.object(Path, 'home', side_effect=RuntimeError('Could not determine home directory.')):
+            args = vision.parser().parse_args([
+                '--codex-home', str(self.home), '--image', str(ROOT / 'examples/demo.png'),
+                '--prompt', 'test', '--out', str(self.root / 'result.json')])
+            with self.assertRaises(vision.VisionError) as caught:
+                vision.run(args)
+            self.assertEqual(caught.exception.category, 'configuration')
+            with mock.patch.object(sys, 'argv', ['install.py', '--codex-home', str(self.home), '--dry-run']):
+                with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                    installer.main()
+                self.assertEqual(json.loads(output.getvalue())['status'], 'preview')
+            with mock.patch.object(sys, 'argv', ['prune_history.py', '--codex-home', str(self.home),
+                                                'audit', '--session', str(uuid.uuid4())]):
+                with mock.patch.object(pruner, 'session_path', side_effect=ValueError('synthetic missing session')):
+                    with self.assertRaisesRegex(ValueError, 'synthetic missing session'):
+                        pruner.main()
+
+    def test_helper_help_does_not_require_user_profile(self):
+        with mock.patch.object(Path, 'home', side_effect=RuntimeError('Could not determine home directory.')):
+            for name, entrypoint in (('read_image.py', lambda: vision.parser().parse_args()),
+                                     ('prune_history.py', pruner.main), ('install.py', installer.main)):
+                with self.subTest(helper=name):
+                    with mock.patch.object(sys, 'argv', [name, '--help']):
+                        with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                            with self.assertRaises(SystemExit) as caught:
+                                entrypoint()
+                        self.assertEqual(caught.exception.code, 0)
+                        self.assertIn('usage:', output.getvalue())
+
+    def test_codex_home_environment_does_not_require_user_profile(self):
+        with mock.patch.dict(os.environ, {'CODEX_HOME': str(self.home)}):
+            with mock.patch.object(Path, 'home', side_effect=RuntimeError('Could not determine home directory.')):
+                args = vision.parser().parse_args([
+                    '--image', str(ROOT / 'examples/demo.png'), '--prompt', 'test',
+                    '--out', str(self.root / 'result.json')])
+                self.assertEqual(args.codex_home, str(self.home))
+
     def test_cli_help_routes_to_each_helper(self):
         for command in ([], ['read'], ['history']):
             result = subprocess.run([sys.executable, str(ROOT / 'icg.py'), *command, '--help'], capture_output=True, text=True)

@@ -16,7 +16,7 @@ Images are still encoded and transmitted to the provider. This reduces image ret
 
 Cache fingerprints include paths, image hashes, prompt, endpoint, model, detail, effort, instructions and output budget. Only the chosen output file is reused for observe passes. A review pass must make a fresh request, normally writing a separate artifact. Each actual API request gets a local unique request_id and elapsed time; neither field proves answer quality. A cache does not evaluate answer correctness. Text can lose visual detail, so preserve original images and verify important observations.
 
-The API call runs in a dedicated subprocess. The parent supplies the payload/key through stdin and accepts only a completed textual result. Its communication deadline covers upload and response wait, and it stops and reaps a stalled worker. The worker cannot save final artifacts itself. This bounds ordinary stalls, not OS scheduling or remote provider execution. Structured error types guide task-level strategy without automatic retries.
+The API call runs in a dedicated subprocess. The parent supplies the payload/key through stdin and accepts only a completed textual result. A communication thread owns the pipes while the parent supervises the deadline; this also covers Windows stdin writes that can block before communicate checks its timeout. On expiry or interruption, the parent stops and reaps its worker, joins the communication thread and closes the streams. The worker cannot save final artifacts itself. This bounds ordinary stalls, not OS scheduling or remote provider execution. Structured error types guide task-level strategy without automatic retries.
 
 ## Why not rewrite a live JSONL?
 

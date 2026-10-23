@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import tomllib
 import uuid
@@ -262,27 +263,40 @@ def _run_worker(command, request, timeout):
     encoded = json.dumps(request, ensure_ascii=False)
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, encoding='utf-8')
+    output, errors = [], []
+
+    def transfer():
+        try:
+            output.append(process.communicate(encoded))
+        except BaseException as error:
+            errors.append(error)
+
+    # Windows communicate(timeout=...) can block on stdin before checking the clock.
+    # Keep the supervisor free to stop the child during any pipe operation.
+    transfer_thread = threading.Thread(target=transfer, name='icg-vision-pipe', daemon=True)
     try:
-        remaining = timeout - (time.monotonic() - started)
-        if remaining <= 0:
-            raise subprocess.TimeoutExpired(command, timeout)
-        stdout, _ = process.communicate(encoded, timeout=remaining)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.communicate()  # Reap only the worker owned by this call; it cannot save results.
+        transfer_thread.start()
+        transfer_thread.join(max(0, timeout - (time.monotonic() - started)))
+        timed_out = transfer_thread.is_alive()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        # Killing our child releases a blocked pipe write/read. Only transfer()
+        # calls communicate(); join it before touching its streams.
+        if transfer_thread.ident is not None:
+            transfer_thread.join()
+        process.wait()
+        for pipe in (process.stdin, process.stdout, process.stderr):
+            if pipe is not None:
+                pipe.close()
+    if timed_out:
         error = VisionError('Total vision request deadline exceeded; local request worker stopped.',
                             'total_timeout', retryable=True)
         error.elapsed_seconds = round(time.monotonic() - started, 3)
         raise error from None
-    except BaseException:
-        process.kill()
-        process.communicate()
-        raise
-    finally:
-        # communicate() after a timeout can leave stdin open if the worker never read it.
-        for pipe in (process.stdin, process.stdout, process.stderr):
-            if pipe is not None:
-                pipe.close()
+    if errors:
+        raise errors[0]
+    stdout, _ = output[0]
     if process.returncode != 0:
         raise VisionError('Vision worker exited without a usable result; raw stderr was not printed.', 'worker')
     try:
@@ -427,7 +441,7 @@ def run(args):
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--codex-home', default=os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
+    p.add_argument('--codex-home', default=os.environ.get('CODEX_HOME') or '~/.codex')
     p.add_argument('--image', action='append', required=True)
     q = p.add_mutually_exclusive_group(required=True)
     q.add_argument('--prompt')

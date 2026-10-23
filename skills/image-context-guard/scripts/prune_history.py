@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Audit embedded images, or prune/restore an explicitly selected unlocked history."""
 import argparse
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 try:
     import fcntl
@@ -45,7 +45,7 @@ def session_path(home, selector):
         database = home / 'state_5.sqlite'
         if database.exists():
             try:
-                with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as conn:
+                with closing(sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True)) as conn:
                     conn.execute('PRAGMA query_only=ON')
                     row = conn.execute('SELECT rollout_path FROM threads WHERE id=?', (selector,)).fetchone()
                     if row and Path(row[0]).exists():
@@ -248,7 +248,7 @@ def restore(home, manifest_path, apply):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--codex-home', default=os.environ.get('CODEX_HOME', str(Path.home() / '.codex')))
+    parser.add_argument('--codex-home', default=os.environ.get('CODEX_HOME') or '~/.codex')
     sub = parser.add_subparsers(dest='action', required=True)
     for command in ('audit', 'prune'):
         p = sub.add_parser(command)

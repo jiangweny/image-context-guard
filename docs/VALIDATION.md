@@ -8,7 +8,7 @@ Recorded: 2026-10-23
 
 - Environment: Linux, Python 3.11.13.
 - Command: python -m unittest discover -s tests -v
-- Result after the CI path correction: **61 tests passed**, no skipped tests on this local POSIX run. The initial release had 56 tests.
+- Result after the Windows corrections: **67 tests passed**, no skipped tests on this local POSIX run, also with ResourceWarning treated as an error. The initial release had 56 tests; the first path correction had 61.
 - The packaged skill passed the local Codex skill-creator frontmatter/structure validator.
 - Tests used temporary directories, synthetic images and histories, fake credentials, and mocked HTTP responses. They did not use real session files or call a provider.
 
@@ -29,6 +29,7 @@ Covered behavior:
 - Fresh review requests with separate IDs/artifacts; cache never substitutes for a second visual request.
 - Backend preferences, scheduling limits and preservation of settings on reinstall.
 - Canonical home paths, directory aliases, restoration through an aliased home, external-manifest rejection and canonical custom-install destinations.
+- CLI help and explicit configuration without a discoverable user profile; closing SQLite connections on both successful lookup and schema fallback; an externally supervised deadline even when pipe communication itself ignores timeouts.
 
 ## First GitHub Actions run and path correction
 
@@ -38,7 +39,19 @@ The containment checks resolved target paths but compared them against an unreso
 
 The history selection and restore helpers now canonicalize the home before comparing paths. The installer assertion uses a resolved expected path. Five regression tests cover equivalent home paths, directory symlinks where supported, restore behavior and installation destinations; outside-directory rejection remains enforced. The original platform matrix and POSIX lock requirements are unchanged.
 
-Before the correction, the new equivalent-home tests reproduced the session and manifest rejection errors locally. Afterward, all 61 tests passed on Linux, including a run with ResourceWarning treated as an error. A new macOS/Windows CI run is still required to establish the outcome on those runners.
+Before the correction, the new equivalent-home tests reproduced the session and manifest rejection errors locally. Afterward, all 61 tests passed on Linux, including a run with ResourceWarning treated as an error. The [second published matrix run](https://github.com/jiangweny/image-context-guard/actions/runs/39940580320), on commit 6b647e4, passed all Ubuntu and macOS jobs; Windows still failed.
+
+## Windows failures and corrections
+
+The supplied Windows Python 3.11 test log from that second run records 61 tests, with 3 failures, 18 errors and 6 expected POSIX-only skips. The failures have three causes:
+
+- The tests clear the process environment. Windows then cannot determine the user profile. All three helpers evaluated Path.home() while constructing argument parsers, even for --help or an explicit --codex-home. The default now remains an unexpanded path until it is actually used.
+- A SQLite connection context manager manages transactions but does not close the connection. Both the history-index lookup and the test fixture now explicitly close connections; otherwise Windows refuses to remove the still-open database file.
+- On Windows, subprocess communication can block writing stdin before its timeout check. The blocked-upload test took about 30 seconds instead of stopping within its 8-second assertion. A separate communication thread now lets the parent supervise the whole deadline, kill its worker, join the thread and close its pipes. Only that thread calls communicate.
+
+Six additional tests cover these cases, including a pipe operation that ignores its own timeout and cleanup after a pipe error. The profile and database regressions were observed failing before the fixes and pass afterward. All 67 tests pass locally on Linux, with no skipped tests and ResourceWarning treated as an error.
+
+The OS/Python matrix and its Windows timeout tests remain enabled. A Windows rerun of this correction is pending; local regression tests do not substitute for a real Windows runner. The Node.js deprecation annotation in the failed jobs was a warning, not the test failure.
 
 ## Observed native-agent workflow
 
@@ -63,7 +76,7 @@ This verifies a small native workflow in one environment. It does not measure re
 ## Not yet established
 
 - **Real-provider end-to-end vision success.** An earlier development request was blocked by the environment's proxy connection. This is not evidence that the provider accepted or rejected the image.
-- Successful Windows or macOS results after the path correction. The initial jobs failed; a rerun of the corrected code is pending. POSIX history mutation tests intentionally skip on systems without fcntl; the directory-symlink regression skips only where symlink creation is unavailable.
+- Successful Windows results after the latest correction. Ubuntu and macOS passed the previous path-correction commit; the updated code needs another matrix run. POSIX history mutation tests intentionally skip on systems without fcntl; the directory-symlink regression skips only where symlink creation is unavailable.
 - Compatibility with every Codex version, proxy, API model or authentication method.
 - Measured improvements in request bytes, latency or failure rate in controlled comparisons.
 - Automatic skill selection in every client session. The workflow is agent-guided, not a runtime interceptor.
