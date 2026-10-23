@@ -1,0 +1,9 @@
+# Copy to a private directory as config.toml; edit before use.
+# This is not a working credential or a recommendation of a particular model.
+model = "YOUR_VISION_CAPABLE_MODEL"
+model_provider = "vision"
+
+[model_providers.vision]
+base_url = "https://api.openai.com/v1"
+wire_api = "responses"
+env_key = "OPENAI_API_KEY"

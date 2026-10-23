@@ -1,0 +1,4 @@
+interface:
+  display_name: "图片上下文保护"
+  short_description: "让读图结果进入主对话，隔离图片载荷并维护可恢复的文字记录"
+  default_prompt: "使用 $image-context-guard 分析图片，并保护主对话的上下文。"

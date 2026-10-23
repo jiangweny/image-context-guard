@@ -1,0 +1,15 @@
+{
+  "task_id": "demo-4827",
+  "image_paths": ["examples/demo.png"],
+  "backend": "native-agent",
+  "owner_agent_id": null,
+  "attempt": 1,
+  "stage": "planned",
+  "last_progress_utc": null,
+  "blocked_reason": null,
+  "replacement_count": 0,
+  "output_files": [],
+  "first_pass": {"result_path": null, "observed_at": null, "visual_evidence": null},
+  "review": {"required": true, "result_path": null, "observed_at": null, "visual_evidence": null, "cached": null},
+  "parent_image_count": null
+}

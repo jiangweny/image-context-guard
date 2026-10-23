@@ -1,0 +1,30 @@
+# Local Python environment and generated artifacts
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.DS_Store
+.idea/
+.vscode/
+
+# Never publish private credentials, histories, results or backups
+.env
+.env.*
+**/auth.json
+**/config.toml
+**/runtime.json
+**/sessions/
+**/archived_sessions/
+**/image-context-backups/
+**/image-context-guard-install-backups/
+*.jsonl
+*.bak
+*.sqlite*
+*.log
+outputs/
+local-config/

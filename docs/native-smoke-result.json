@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "test": "synthetic-native-agent-smoke",
+  "recorded_date": "2026-10-23",
+  "backend": "native-agent",
+  "source": {
+    "path": "examples/demo.png",
+    "sha256": "616be7ca85d6bd7e32cbc17cd6d0daa2808f10feab47e4647e9feedf67a6bce5",
+    "expected_text": "4827",
+    "synthetic": true
+  },
+  "worker_context": {
+    "parent_history_forked": false,
+    "expected_answer_supplied": false
+  },
+  "passes": [
+    {
+      "pass": "observe",
+      "observed_text": "4827",
+      "observed_at": "2026-10-23T08:51:34Z",
+      "saved_at": "2026-10-23T08:51:57.653912+00:00",
+      "cached": false
+    },
+    {
+      "pass": "review",
+      "observed_text": "4827",
+      "observed_at": "2026-10-23T08:51:57Z",
+      "saved_at": "2026-10-23T08:52:20.676533+00:00",
+      "cached": false,
+      "reviewer_type": "same-worker",
+      "independent_reviewer": false
+    }
+  ],
+  "worker_recorded_evidence": {
+    "view_image_operations": 2,
+    "original_reopened_for_review": true,
+    "first_result_saved_before_review": true,
+    "raw_worker_log_independently_audited": false
+  },
+  "parent_verified_artifacts": {
+    "result_files_exist_and_parse": true,
+    "source_paths_match": true,
+    "both_observations_match_fixture": true
+  },
+  "parent_history_audit": {
+    "method": "Separate read-only audit commands before and after the worker task",
+    "embedded_image_entries_before": 0,
+    "embedded_image_entries_after": 0,
+    "estimated_history_image_entries_before": 0,
+    "estimated_history_image_entries_after": 0,
+    "history_modified": false
+  },
+  "outcome": {
+    "stage": "complete",
+    "replacements": 0,
+    "matches_expected": true
+  },
+  "limitations": [
+    "One synthetic image in one client environment; not a production batch or performance benchmark.",
+    "The second pass used the same worker; it is not independent reviewer confirmation.",
+    "View-call evidence is worker-recorded; the worker raw session log was not independently audited.",
+    "Parent log counts do not measure in-memory context or provider request bytes.",
+    "No successful live test of the direct API backend is established by this result."
+  ]
+}
