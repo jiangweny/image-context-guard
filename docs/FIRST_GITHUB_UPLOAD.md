@@ -54,7 +54,7 @@ git push -u origin main
 
 按 Git/VS Code 提示登录。不要把 token 写进 remote URL、源码或 README。如果 origin 已存在，先 git remote -v 核对，避免推到错误仓库。
 
-上传后检查首页 README 和 Actions 测试结果。首次 GitHub CI 尚未执行，不能提前宣称各系统测试通过。
+上传后检查首页 README 和 Actions 测试结果。以实际运行结果为准；本地测试通过不代表各系统的 CI 都已通过。
 
 ## 4. 不想使用 Git 时
 

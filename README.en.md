@@ -6,7 +6,7 @@ Analyze local images in isolated native agents or independent API requests, and 
 
 [中文](README.md) · [Design](docs/DESIGN.md) · [Validation](docs/VALIDATION.md)
 
-**Experimental, v0.1.0.** A community project, not an official OpenAI extension. It is a workflow, not a runtime interceptor, and does not guarantee recovery from network or context errors. All 56 offline tests passed. The refined native workflow also completed a synthetic one-image smoke test: two visual passes both read 4827, while embedded image entries in the parent log stayed at 0 → 0. This was same-worker review, not an independent reviewer or a performance benchmark. The API helper still lacks a successful real-provider test. See the [validation record](docs/VALIDATION.md).
+**Experimental, v0.1.0.** A community project, not an official OpenAI extension. It is a workflow, not a runtime interceptor, and does not guarantee recovery from network or context errors. All 61 offline tests passed locally on Linux. The refined native workflow also completed a synthetic one-image smoke test: two visual passes both read 4827, while embedded image entries in the parent log stayed at 0 → 0. This was same-worker review, not an independent reviewer or a performance benchmark. The API helper still lacks a successful real-provider test. See the [validation record](docs/VALIDATION.md).
 
 ## Two backends
 

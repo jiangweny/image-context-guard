@@ -8,7 +8,7 @@ Recorded: 2026-10-23
 
 - Environment: Linux, Python 3.11.13.
 - Command: python -m unittest discover -s tests -v
-- Result: **56 tests passed**, no skipped tests on this local POSIX run.
+- Result after the CI path correction: **61 tests passed**, no skipped tests on this local POSIX run. The initial release had 56 tests.
 - The packaged skill passed the local Codex skill-creator frontmatter/structure validator.
 - Tests used temporary directories, synthetic images and histories, fake credentials, and mocked HTTP responses. They did not use real session files or call a provider.
 
@@ -28,6 +28,17 @@ Covered behavior:
 - Structured permission/proxy/authentication/rate-limit/service/timeout errors and credential redaction.
 - Fresh review requests with separate IDs/artifacts; cache never substitutes for a second visual request.
 - Backend preferences, scheduling limits and preservation of settings on reinstall.
+- Canonical home paths, directory aliases, restoration through an aliased home, external-manifest rejection and canonical custom-install destinations.
+
+## First GitHub Actions run and path correction
+
+The [first published matrix run](https://github.com/jiangweny/image-context-guard/actions/runs/39939151768) tested Python 3.11, 3.12 and 3.13 on Ubuntu, macOS and Windows. All three Ubuntu jobs passed; all six macOS/Windows jobs failed. Public failure annotations include the history tool rejecting a valid session as outside the configured home.
+
+The containment checks resolved target paths but compared them against an unresolved home. Different path spellings for the same directory could therefore fail the check. The installer already returns a canonical destination, while one test expected an unresolved path.
+
+The history selection and restore helpers now canonicalize the home before comparing paths. The installer assertion uses a resolved expected path. Five regression tests cover equivalent home paths, directory symlinks where supported, restore behavior and installation destinations; outside-directory rejection remains enforced. The original platform matrix and POSIX lock requirements are unchanged.
+
+Before the correction, the new equivalent-home tests reproduced the session and manifest rejection errors locally. Afterward, all 61 tests passed on Linux, including a run with ResourceWarning treated as an error. A new macOS/Windows CI run is still required to establish the outcome on those runners.
 
 ## Observed native-agent workflow
 
@@ -52,7 +63,7 @@ This verifies a small native workflow in one environment. It does not measure re
 ## Not yet established
 
 - **Real-provider end-to-end vision success.** An earlier development request was blocked by the environment's proxy connection. This is not evidence that the provider accepted or rejected the image.
-- Windows or macOS results. The included GitHub Actions matrix is configured for these systems; it has not run on GitHub yet. POSIX history mutation tests intentionally skip on systems without fcntl.
+- Successful Windows or macOS results after the path correction. The initial jobs failed; a rerun of the corrected code is pending. POSIX history mutation tests intentionally skip on systems without fcntl; the directory-symlink regression skips only where symlink creation is unavailable.
 - Compatibility with every Codex version, proxy, API model or authentication method.
 - Measured improvements in request bytes, latency or failure rate in controlled comparisons.
 - Automatic skill selection in every client session. The workflow is agent-guided, not a runtime interceptor.

@@ -479,11 +479,41 @@ class HistoryTests(IsolatedTest):
             pass
         self.assertEqual(pruner.session_path(self.home, self.sid), self.path.resolve())
 
+    def test_history_selection_normalizes_home(self):
+        alias = self.home / 'sessions' / '..'
+        for selector in (self.sid, str(self.path)):
+            with self.subTest(selector=selector):
+                self.assertEqual(pruner.session_path(alias, selector), self.path.resolve())
+
+    def test_history_selection_accepts_symlinked_home(self):
+        alias = self.root / 'codex-alias'
+        try:
+            alias.symlink_to(self.home.resolve(), target_is_directory=True)
+        except (OSError, NotImplementedError) as error:
+            self.skipTest('Directory symlinks are unavailable: ' + str(error))
+        self.assertEqual(pruner.session_path(alias, self.sid), self.path.resolve())
+
+    def test_restore_normalizes_home(self):
+        self.require_posix()
+        result = pruner.prune(self.home, self.path, self.checkpoint, True)
+        restored = pruner.restore(self.home / 'sessions' / '..', result['manifest'], True)
+        self.assertEqual(restored['status'], 'restored')
+        self.assertEqual(self.path.read_bytes(), self.raw)
+
+    def test_restore_refuses_manifest_outside_backup_directory(self):
+        manifest = self.root / 'outside-manifest.json'
+        manifest.write_text('{}', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'inside this Codex home'):
+            pruner.restore(self.home / 'sessions' / '..', manifest, False)
+        self.assertEqual(self.path.read_bytes(), self.raw)
+
     def test_outside_history_directory_is_refused(self):
         outside = self.root / 'outside.jsonl'
         outside.write_bytes(self.raw)
-        with self.assertRaisesRegex(ValueError, 'under this Codex home'):
-            pruner.session_path(self.home, str(outside))
+        for home in (self.home, self.home / 'sessions' / '..'):
+            with self.subTest(home=home):
+                with self.assertRaisesRegex(ValueError, 'under this Codex home'):
+                    pruner.session_path(home, str(outside))
 
     def test_missing_posix_support_is_clear_and_non_destructive(self):
         with mock.patch.object(pruner, 'fcntl', None):
@@ -538,7 +568,13 @@ class InstallTests(IsolatedTest):
     def test_custom_discovery_directory(self):
         custom = self.root / 'custom-skills'
         result = installer.install(self.arguments(skills_dir=str(custom)))
-        self.assertEqual(Path(result['skill']), custom / 'image-context-guard')
+        self.assertEqual(Path(result['skill']), custom.resolve() / 'image-context-guard')
+
+    def test_custom_discovery_directory_normalizes_parent_alias(self):
+        custom = self.home / '..' / 'custom-skills'
+        result = installer.install(self.arguments(skills_dir=str(custom)))
+        self.assertEqual(Path(result['skill']), custom.resolve() / 'image-context-guard')
+        self.assertTrue((Path(result['skill']) / 'SKILL.md').is_file())
 
     def test_backend_preferences_persist_on_replacement(self):
         first = installer.install(self.arguments(backend='native-agent', max_native_agents=1, no_progress_seconds=180))

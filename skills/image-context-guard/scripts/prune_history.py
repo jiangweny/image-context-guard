@@ -31,6 +31,8 @@ def current_id():
 
 
 def session_path(home, selector):
+    # Compare canonical roots with canonical targets, including OS path aliases.
+    home = Path(home).expanduser().resolve()
     if selector == 'current':
         selector = current_id()
         if not selector:
@@ -223,6 +225,7 @@ def prune(home, path, checkpoint, apply):
 
 
 def restore(home, manifest_path, apply):
+    home = Path(home).expanduser().resolve()
     manifest_path = Path(manifest_path).expanduser().resolve(strict=True)
     if not manifest_path.is_relative_to(home / 'image-context-backups'):
         raise ValueError('Use a manifest inside this Codex home image-context-backups directory.')
